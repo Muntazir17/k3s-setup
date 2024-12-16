@@ -1,7 +1,4 @@
-# Project Setup Guide
-
-## Prerequisites
-Ensure your system is up to date and has the necessary tools installed before starting.
+# Project Setup
 
 ## Step 1: Install k3s
 Run the following command to install k3s:
