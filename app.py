@@ -1,5 +1,4 @@
 from flask import Flask, request, jsonify
-import docker
 import tempfile
 import os
 import subprocess
@@ -7,30 +6,18 @@ from kubernetes import client, config
 
 app = Flask(__name__)
 
-# Initialize Docker client
-docker_client = docker.from_env()
-
 # Load Kubernetes configuration
 config.load_kube_config()
 k8s_api = client.CoreV1Api()
 
-def import_to_containerd(image_tar_path):
-    """Imports a Docker image tarball into containerd."""
-    if not os.path.exists(image_tar_path):
-        raise ValueError("The provided image tarball path does not exist.")
-    try:
-        # Use ctr CLI to import the image into containerd
-        subprocess.run(["ctr", "-n", "k8s.io", "images", "import", image_tar_path], check=True)
-        return "Image successfully imported into containerd."
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"Failed to import image to containerd: {e}")
 def deploy_to_k3s(image_name, image_id):
     """Deploy a pod to k3s cluster with the specified Docker image."""
     if not image_name:
         raise ValueError("Image name must be provided.")
 
-    # Use the image ID in the pod name for easy differentiation
-    pod_name = f"dockerfile-pod-{image_id[:12]}"  # Use the first 12 characters of the image ID to create a unique pod name
+    # Sanitize and validate pod name
+    sanitized_image_id = (image_id.replace(":", "-")[:12] if image_id else "default")
+    pod_name = f"dockerfile-pod-{sanitized_image_id}".rstrip('-')
 
     # Define the pod spec
     pod_manifest = {
@@ -42,6 +29,7 @@ def deploy_to_k3s(image_name, image_id):
                 {
                     "name": "dockerfile-container",
                     "image": image_name,
+                    "imagePullPolicy": "Never",
                 }
             ]
         },
@@ -53,6 +41,7 @@ def deploy_to_k3s(image_name, image_id):
         return f"Pod '{pod_name}' successfully created with image '{image_name}'."
     except client.exceptions.ApiException as e:
         raise RuntimeError(f"Error creating pod: {e}")
+
 
 @app.route("/build-and-deploy", methods=["POST"])
 def build_and_deploy():
@@ -70,32 +59,46 @@ def build_and_deploy():
         dockerfile.save(dockerfile_path)
 
         try:
-            # Build the Docker image
+            # Step 1: Build Docker image
             image_name = "dockerfile-app:latest"
-            image, _ = docker_client.images.build(path=temp_dir, tag=image_name)
+            build_command = f"docker build -t {image_name} {temp_dir}"
+            build_result = subprocess.run(build_command, shell=True, capture_output=True, text=True)
 
-            # Store the image ID for future use
-            image_id = image.id
+            if build_result.returncode != 0:
+                return jsonify({"error": "Docker build failed.", "details": build_result.stderr}), 500
 
-            # Save the image as a tarball
-            image_tar_path = os.path.join(temp_dir, "image.tar")
-            with open(image_tar_path, "wb") as tar_file:
-                for chunk in image.save():
-                    tar_file.write(chunk)
+            # Extract image ID
+            image_id = build_result.stdout.strip()  # Simplified for now
 
-            # Import the tarball into containerd
-            import_message = import_to_containerd(image_tar_path)
+            # Step 2: Save Docker image as tarball
+            tarball_name = "dockerfile-app.tar"
+            tarball_path = os.path.join(temp_dir, tarball_name)
+            save_command = f"docker save -o {tarball_path} {image_name}"
+            save_result = subprocess.run(save_command, shell=True, capture_output=True, text=True)
 
-            # Deploy the image to k3s
+            if save_result.returncode != 0:
+                return jsonify({"error": "Docker save failed.", "details": save_result.stderr}), 500
+
+            # Step 3: Import tarball into containerd
+            import_command = f"ctr -n k8s.io images import {tarball_path}"
+            import_result = subprocess.run(import_command, shell=True, capture_output=True, text=True)
+
+            if import_result.returncode != 0:
+                return jsonify({"error": "Containerd import failed.", "details": import_result.stderr}), 500
+
+            # Step 4: Deploy the image to k3s
             deployment_message = deploy_to_k3s(image_name, image_id)
-            return jsonify({"import_message": import_message, "deployment_message": deployment_message, "image_id": image_id})
 
-        except docker.errors.BuildError as build_error:
-            return jsonify({"error": f"Docker build failed: {build_error}"}), 500
-        except ValueError as ve:
-            return jsonify({"error": str(ve)}), 400
+            # Success response
+            return jsonify({
+                "message": "Image built, saved, imported into containerd, and deployed successfully.",
+                "deployment_message": deployment_message,
+                "image_id": image_id
+            })
+
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            return jsonify({"error": "An unexpected error occurred.", "details": str(e)}), 500
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
