@@ -21,7 +21,7 @@ apps_v1_api = client.AppsV1Api()
 
 # Configuration constants
 K8S_NAMESPACE = os.getenv("K8S_NAMESPACE", "default")
-DEPLOY_WAIT_TIME = int(os.getenv("DEPLOY_WAIT_TIME", "60"))
+DEPLOY_WAIT_TIME = int(os.getenv("DEPLOY_WAIT_TIME", "30"))
 IMAGE_PULL_POLICY = os.getenv("IMAGE_PULL_POLICY", "Never")
 
 def deploy_to_k3s(image_name, deployment_name):
