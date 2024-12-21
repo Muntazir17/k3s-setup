@@ -70,6 +70,7 @@ Use `curl` to test the application by pushing a Dockerfile:
 ```bash
 curl -X POST -F "dockerfile=@Dockerfile" http://localhost:5000/build-and-deploy
 ```
+Note: There might be a wait time of up to 30 seconds before receiving a response as the app processes the Dockerfile.
 ## Monitor pod status in real-time
 Open another Terminal, Run the following command:
 ```bash
