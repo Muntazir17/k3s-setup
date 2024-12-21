@@ -1,8 +1,5 @@
-
-# Project Guide
-
 ## Prerequisites
-Ensure your Ubuntu:22.04 system is up to date and has the necessary tools installed before starting.
+Ensure your Ubuntu system is up to date and has the necessary tools installed before starting.
 
 
 ## Step 1: Update System
@@ -57,10 +54,6 @@ Check if the k3s configuration file exists:
 ```bash
 ls /etc/rancher/k3s/k3s.yaml
 ```
-Copy the k3s configuration file to your home directory:
-```bash
-cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
-```
 Set the KUBECONFIG environment variable:
 ```bash
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
@@ -69,11 +62,17 @@ export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 ## Step 9: Create and Start the Flask App
 Run the Flask server:
 ```bash
-python server.py
+python app.py
 ```
 
 ## Step 10: Test the Flask App
-Use `curl` to test the application by replacing `<IP-Addr>` with your server's IP address:
+Use `curl` to test the application by pushing a Dockerfile:
 ```bash
-curl -X POST http://<IP-Addr>:5000/build-and-deploy -F "dockerfile=@Dockerfile"
+curl -X POST -F "dockerfile=@Dockerfile" http://localhost:5000/build-and-deploy
 ```
+## Monitor pod status in real-time
+Open another Terminal, Run the following command:
+```bash
+kubectl get pods -w
+```
+## This command will continuously watch the pod status to help you track the deployment progress.
